@@ -21,9 +21,9 @@ jobs:
       DATABASE_URL: postgres://ci:ci@localhost:5432/ci
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22 # matches "engines" in package.json
           cache: npm
@@ -57,9 +57,9 @@ jobs:
       PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
