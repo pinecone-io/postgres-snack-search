@@ -2,6 +2,8 @@
 
 A Next.js sample app simulating a snack shop showing Postgres as the system of record and Pinecone as a derived, rebuildable search index, connected by nothing but a list of IDs.
 
+[![Deploy on Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/pinecone-io/postgres-snack-search&env=PINECONE_API_KEY,DATABASE_URL&envDescription=Pinecone%20API%20key%20and%20a%20Postgres%20connection%20string&envLink=https://github.com/pinecone-io/postgres-snack-search#quickstart)
+
 ![The shop simulation running in Live sync mode](docs/shop-simulation.gif)
 
 *Live sync mode: shoppers empty the shelves while `docs in pinecone` holds at 1,160. Blue squares turn amber the moment a snack sells out, then green a second later once Pinecone's `in_stock` flag lands — that amber gap is the index's real propagation delay.* 
@@ -36,7 +38,7 @@ Re-running `npm run setup` is safe. Edit `snacks.jsonl` and re-run it to reload 
 
 ## Deploying
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/pinecone-io/postgres-snack-search&env=PINECONE_API_KEY,DATABASE_URL&envDescription=Pinecone%20API%20key%20and%20a%20Postgres%20connection%20string&envLink=https://github.com/pinecone-io/postgres-snack-search#quickstart)
+[![Deploy on Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/pinecone-io/postgres-snack-search&env=PINECONE_API_KEY,DATABASE_URL&envDescription=Pinecone%20API%20key%20and%20a%20Postgres%20connection%20string&envLink=https://github.com/pinecone-io/postgres-snack-search#quickstart)
 
 Stock Next.js deploy — set `PINECONE_API_KEY` and `DATABASE_URL`. Four things to know:
 
