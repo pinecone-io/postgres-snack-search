@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    env:
+      # `src/lib/env.ts` validates credentials at module load, and `next build`
+      # evaluates every page's module graph — so the build needs these to be
+      # present and well-formed, not to be real. Nothing here connects to
+      # anything: both pages are `force-dynamic`, so no data is fetched at
+      # build time. The suites that do need real credentials are separate
+      # scripts, and run in the job below.
+      PINECONE_API_KEY: ci-placeholder-not-a-real-key
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # matches "engines" in package.json
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        # Pure functions, no network, no credentials. Must always pass.
+        run: npm test
+
+      - name: Build
+        # Also typechecks: `next build` runs tsc itself. A standalone
+        # `tsc --noEmit` step would fail here — `src/app/layout.tsx` uses
+        # `LayoutProps`, a type Next generates into `next-env.d.ts` and
+        # `.next/types/`, and both are gitignored. On a fresh checkout they
+        # don't exist until this step creates them.
+        run: npm run build
+
+  integration:
+    name: Postgres + Pinecone suites
+    runs-on: ubuntu-latest
+    # Never on a pull request: these hit a real database and a real index, and
+    # a fork's PR cannot read secrets anyway. Run it by hand from the Actions
+    # tab, or on a schedule if you want drift detection.
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Database tests
+        # Shares the real database; every row it touches is prefixed
+        # `zz_test_` and deleted afterwards. Skips itself without DATABASE_URL.
+        run: npm run test:db
+
+      - name: Pinecone contract tests
+        # Pins the three undocumented behaviors live sync depends on. A failure
+        # here means Pinecone changed, not that the app broke — see README.
+        # Fixtures go to a `__tests__` namespace, never the shop's data.
+        run: npm run test:contract
