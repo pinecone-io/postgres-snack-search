@@ -66,6 +66,7 @@ export function useShopSimulation(totalSnacks: number) {
   const flagsRef = useRef<Map<string, FlagEntry>>(new Map());
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [restockProgress, setRestockProgress] = useState<{ indexed: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [brain, setBrain] = useState<ShopperBrain>("templated");
   const [syncMode, setSyncMode] = useState<SyncMode>("batch");
@@ -265,9 +266,10 @@ export function useShopSimulation(totalSnacks: number) {
   async function restock() {
     setRunning(false);
     setBusy(true);
+    setRestockProgress({ indexed: 0, total: totalSnacks });
     setError(null);
     try {
-      await fetch("/api/sim/reset", { method: "POST" });
+      await streamRestock(setRestockProgress);
       const { state } = await fetch("/api/sim/state").then((r) => r.json());
       setDay(state.currentDay);
       setTick(state.tickInDay);
@@ -288,6 +290,7 @@ export function useShopSimulation(totalSnacks: number) {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setRestockProgress(null);
       setBusy(false);
     }
   }
@@ -348,6 +351,7 @@ export function useShopSimulation(totalSnacks: number) {
     // Control state.
     running,
     busy,
+    restockProgress,
     error,
     brain,
     syncMode,
@@ -361,4 +365,27 @@ export function useShopSimulation(totalSnacks: number) {
     restock,
     selectShopper,
   };
+}
+
+// Reads the reset route's NDJSON stream, reporting each page as it lands.
+async function streamRestock(onProgress: (p: { indexed: number; total: number }) => void) {
+  const res = await fetch("/api/sim/reset", { method: "POST" });
+  if (!res.ok || !res.body) throw new Error(`restock failed (HTTP ${res.status})`);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  let finished = false;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffered += value;
+    const lines = buffered.split("\n");
+    buffered = lines.pop() ?? "";
+    for (const line of lines.filter(Boolean)) {
+      const message = JSON.parse(line);
+      if (message.error) throw new Error(message.error);
+      if ("snackCount" in message) finished = true;
+      else onProgress(message);
+    }
+  }
+  if (!finished) throw new Error("restock ended before the index rebuild finished");
 }

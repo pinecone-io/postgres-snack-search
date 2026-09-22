@@ -45,7 +45,7 @@ Stock Next.js deploy — set `PINECONE_API_KEY` and `DATABASE_URL`. Four things 
 - **Run `npm run setup` locally first**, pointed at the same database and index the deployment will use. Index creation and seeding aren't part of the build; skip this and the shop comes up empty.
 - **Use a pooled connection string.** Serverless opens many short-lived connections, and `/shop` polls every 1.2s per open tab. On Supabase that's the `*.pooler.supabase.com` string; keep the direct one for `npm run db:push`.
 - **The mutating endpoints have no auth.** Anyone who finds a public deployment can press Restock, which rebuilds all 1,160 documents in whatever index you pointed at. Use a throwaway project and index for anything public.
-- **Restock works on a deployment; `npm run db:seed` doesn't.** Restock rebuilds the index from the `snacks` table, embeddings included, touching no files. `db:seed` reads the gitignored 23MB prepared file, so it stays a local step.
+- **Restock works on a deployment; `npm run db:seed` doesn't.** Restock rebuilds the index from the `snacks` table, embedding each row on the way in (about 13 embed calls), touching no files. `db:seed` reads the gitignored 23MB prepared file, so it stays a local step.
 
 ## Pages
 

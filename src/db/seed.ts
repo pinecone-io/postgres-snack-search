@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { asc, sql } from "drizzle-orm";
 import { db } from "./client";
 import { inventoryEvents, simulationState, snacks } from "./schema";
-import { upsertToIndex } from "@/lib/snacksPinecone";
+import { embedSnackDocuments, upsertToIndex } from "@/lib/snacksPinecone";
 import type { SnackCategory } from "@/lib/snacks";
 
 const SEED = 42;
@@ -72,7 +72,8 @@ function loadPreparedDocs(file: string): PreparedDoc[] {
 /**
  * Cold start: replaces the catalog with the contents of the prepared JSONL,
  * then upserts every document into Pinecone so the index matches the rows
- * that were just written.
+ * that were just written. The vectors in the file go to Pinecone only;
+ * Postgres gets the facts (name, text, category, price, stock).
  *
  * Truncates `snacks`, `inventory_events` and `simulation_state` — it builds
  * the catalog rather than refilling it, so this is not what the Restock
@@ -92,7 +93,6 @@ export async function buildCatalog(options: { syncIndex?: boolean; file?: string
     // Drawn from the seeded RNG either way, so the price sequence above
     // stays identical whether or not stock is being overridden.
     stockQty: ((n) => FIXED_STOCK_QTY ?? n)(Math.round(5 + random() * 35)), // 5–40 units by default
-    embedding: doc.embedding,
     inIndex: true,
   }));
 
@@ -116,36 +116,27 @@ export async function buildCatalog(options: { syncIndex?: boolean; file?: string
  * What the Restock button does: refills every shelf, clears the day's sales,
  * and rebuilds the Pinecone index from the `snacks` table.
  *
- * Postgres keeps each snack's embedding next to the row it describes, so
- * this needs no embedding calls and no prepared file — the index is derived
- * from the system of record, which is the point being taught.
+ * Postgres holds no vectors, so each page of rows is embedded on the way
+ * into Pinecone (about 13 embed calls for the full catalog). No prepared
+ * file is read: the index is derived from the system of record, which is
+ * the point being taught.
+ *
+ * Pinecone is rebuilt before any Postgres write. If an embed or upsert
+ * fails partway, Postgres is untouched, and a retry is safe because
+ * re-upserting a document is idempotent. Doing the Postgres update first
+ * would leave rows marked `inIndex = true` whose documents never landed,
+ * and night sync only re-adds rows marked false.
  *
  * Prices are left alone. A restock puts stock back on shelves; it doesn't
  * re-price the shop.
  */
-export async function restockShelves() {
+export async function restockShelves(onProgress?: (indexed: number, total: number) => void) {
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(snacks);
   if (count === 0) {
     throw new Error("The snacks table is empty — run `npm run setup` to build the catalog first.");
   }
 
-  await db.update(snacks).set({
-    // 5–40 units, matching buildCatalog's range, unless SEED_STOCK_QTY pins it.
-    stockQty: FIXED_STOCK_QTY ?? sql`5 + floor(random() * 36)`,
-    // Night sync deletes sold-out documents from Pinecone and flips this to
-    // false; the re-upsert below puts every one of them back, so every row
-    // is searchable again by the time this returns.
-    inIndex: true,
-    updatedAt: new Date(),
-  });
-
-  await db.execute(sql`truncate table ${inventoryEvents} restart identity`);
-  await db.delete(simulationState);
-  await db.insert(simulationState).values({ id: 1, currentDay: 1, tickInDay: 0, pineconeBackfilled: true });
-
-  // Paged rather than loaded at once: 1,160 × 1024 floats is a lot to hold
-  // in memory for no reason, and Pinecone takes them a batch at a time
-  // regardless.
+  // Paged so each page is one embed call and one upsert.
   for (let offset = 0; offset < count; offset += UPSERT_BATCH) {
     const page = await db
       .select({
@@ -153,7 +144,6 @@ export async function restockShelves() {
         name: snacks.name,
         text: snacks.text,
         category: snacks.category,
-        embedding: snacks.embedding,
       })
       .from(snacks)
       .orderBy(asc(snacks.id))
@@ -162,13 +152,28 @@ export async function restockShelves() {
     if (page.length === 0) break;
     // Idempotent: re-upserting a document Pinecone already has is a no-op
     // in effect, so this doesn't need to know what was deleted mid-run.
-    // `in_stock: true` on every doc is what makes Live sync mode's filter
-    // safe to turn on afterward — a filter of `{in_stock: {$eq: true}}`
-    // excludes a document missing the field just as surely as one flagged
+    // `in_stock: true` on every doc (set by embedSnackDocuments) is what
+    // makes Live sync mode's filter safe to turn on afterward — a filter of
+    // `{in_stock: {$eq: true}}` excludes a document missing the field just as surely as one flagged
     // false, so this backfill has to run before Live mode can return
     // anything (see pineconeBackfilled / the Live toggle's gating).
-    await upsertToIndex(page.map((row) => ({ ...row, in_stock: true })));
+    await upsertToIndex(await embedSnackDocuments(page));
+    onProgress?.(offset + page.length, count);
   }
+
+  await db.update(snacks).set({
+    // 5–40 units, matching buildCatalog's range, unless SEED_STOCK_QTY pins it.
+    stockQty: FIXED_STOCK_QTY ?? sql`5 + floor(random() * 36)`,
+    // Night sync deletes sold-out documents from Pinecone and flips this to
+    // false; the re-upsert above put every one of them back, so every row
+    // is searchable again by the time this returns.
+    inIndex: true,
+    updatedAt: new Date(),
+  });
+
+  await db.execute(sql`truncate table ${inventoryEvents} restart identity`);
+  await db.delete(simulationState);
+  await db.insert(simulationState).values({ id: 1, currentDay: 1, tickInDay: 0, pineconeBackfilled: true });
 
   return { snackCount: count };
 }

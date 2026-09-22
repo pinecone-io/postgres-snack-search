@@ -12,10 +12,6 @@ let hydrateSnacks: (typeof import("@/db/queries"))["hydrateSnacks"];
 const PREFIX = "zz_test_";
 const id = (suffix: string) => `${PREFIX}${suffix}`;
 
-// A dense vector's real width doesn't matter to Postgres here; the column
-// just has to be populated.
-const EMBEDDING = Array.from({ length: 8 }, (_, i) => i / 8);
-
 const row = (suffix: string, stockQty: number, priceCents = 100) => ({
   id: id(suffix),
   name: `test snack ${suffix}`,
@@ -23,7 +19,6 @@ const row = (suffix: string, stockQty: number, priceCents = 100) => ({
   category: "savory" as const,
   priceCents,
   stockQty,
-  embedding: EMBEDDING,
   inIndex: true,
 });
 

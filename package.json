@@ -7,17 +7,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "generate:snacks": "tsx scripts/generateSnacks.ts",
-    "db:seed": "tsx scripts/seed.ts",
+    "generate:snacks": "tsx --env-file-if-exists=.env scripts/generateSnacks.ts",
+    "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "db:push": "drizzle-kit push",
     "setup": "npm run setup:index && npm run db:push && npm run db:seed",
-    "stock": "tsx scripts/setStock.ts",
+    "stock": "tsx --env-file-if-exists=.env scripts/setStock.ts",
     "test": "vitest run tests/unit",
     "test:watch": "vitest tests/unit",
     "test:db": "vitest run tests/db",
     "test:contract": "vitest run tests/contract --testTimeout=90000",
     "test:all": "npm run test && npm run test:db && npm run test:contract",
-    "setup:index": "tsx scripts/setupIndex.ts"
+    "setup:index": "tsx --env-file-if-exists=.env scripts/setupIndex.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -47,6 +47,6 @@
     "vitest": "^5.0.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.9"
   }
 }

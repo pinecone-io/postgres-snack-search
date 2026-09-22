@@ -30,6 +30,7 @@ export function ShopSimulation({ totalSnacks }: { totalSnacks: number }) {
     stateCounts,
     running,
     busy,
+    restockProgress,
     error,
     brain,
     syncMode,
@@ -111,10 +112,25 @@ export function ShopSimulation({ totalSnacks }: { totalSnacks: number }) {
             End day (sync)
           </Button>
           <Button size="sm" variant="outline" onClick={restock} disabled={busy}>
-            Restock
+            {restockProgress ? "Restocking…" : "Restock"}
           </Button>
         </div>
       </div>
+
+      {restockProgress && (
+        <div>
+          <p className="font-mono text-xs text-muted-foreground">
+            Rebuilding the Pinecone index from Postgres: {restockProgress.indexed.toLocaleString()} /{" "}
+            {restockProgress.total.toLocaleString()} snacks embedded and upserted
+          </p>
+          <div className="mt-1 h-1.5 w-full bg-muted">
+            <div
+              className="h-full bg-primary transition-[width]"
+              style={{ width: `${(100 * restockProgress.indexed) / restockProgress.total}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

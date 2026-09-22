@@ -15,10 +15,10 @@ import { Pinecone, type DocumentScoringMethod } from "@pinecone-database/pinecon
 import { env } from "@/lib/env";
 import { hydrateSnacks, type Snack } from "@/db/queries";
 import { reciprocalRankFuse, type RankedId } from "@/lib/rrf";
+import { EMBED_BATCH_SIZE, EMBED_MODEL, PASSAGE_PARAMETERS, passageText } from "@/lib/embedding";
 
 const INDEX_NAME = "snacks-hybrid";
 const NAMESPACE = "__default__";
-const EMBED_MODEL = "llama-text-embed-v2";
 
 // How far past the requested topK to search Pinecone, so there's enough
 // headroom left after dropping sold-out ids to still return topK results.
@@ -139,6 +139,34 @@ export interface SnackDocument {
   // tests/contract/pinecone.test.ts, since neither is a documented guarantee
   // for a field that isn't in the index schema.
   in_stock?: boolean;
+}
+
+/**
+ * Turns Postgres rows into full index documents by embedding them. Pinecone
+ * is the only place vectors are stored, so every rebuild or re-add (Restock,
+ * night sync) goes through here. Uses the same passage format as
+ * scripts/setupIndex.ts, so a rebuilt document matches a cold-start one.
+ */
+export async function embedSnackDocuments(
+  snacks: { _id: string; name: string; text: string; category: string }[],
+): Promise<SnackDocument[]> {
+  const documents: SnackDocument[] = [];
+  for (let i = 0; i < snacks.length; i += EMBED_BATCH_SIZE) {
+    const batch = snacks.slice(i, i + EMBED_BATCH_SIZE);
+    const { data } = await pc.inference.embed({
+      model: EMBED_MODEL,
+      inputs: batch.map(passageText),
+      parameters: PASSAGE_PARAMETERS,
+    });
+    batch.forEach((snack, j) => {
+      const embedding = data[j];
+      if (!embedding || !("values" in embedding) || !embedding.values) {
+        throw new Error(`embed returned no dense values for ${snack._id}`);
+      }
+      documents.push({ ...snack, embedding: embedding.values, in_stock: true });
+    });
+  }
+  return documents;
 }
 
 /** Adds (or restores) documents in the index — night sync's other half.

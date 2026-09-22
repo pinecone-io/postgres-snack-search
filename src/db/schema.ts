@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, real, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import type { SnackCategory } from "@/lib/snacks";
 
 // The shop's stockroom ledger: what's on the shelf, what it costs, and how
@@ -13,9 +13,6 @@ export const snacks = pgTable("snacks", {
   category: text("category").notNull().$type<SnackCategory>(),
   priceCents: integer("price_cents").notNull(),
   stockQty: integer("stock_qty").notNull(),
-  // The embedding used to make this snack searchable, kept alongside the row
-  // it describes so restocking or reindexing never needs a fresh embed call.
-  embedding: real("embedding").array().notNull(),
   // Whether this snack's document is physically present in Pinecone. Only a
   // real delete moves it: night sync flips it to false when it removes a
   // sold-out document, and back to true when it re-adds one. A sale never
