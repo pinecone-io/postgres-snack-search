@@ -13,13 +13,9 @@
 // Usage: npm run setup:index   (or npm run setup, which chains all of it)
 import { readFileSync, writeFileSync } from "node:fs";
 import { Pinecone } from "@pinecone-database/pinecone";
+import { EMBED_BATCH_SIZE, EMBED_DIMENSION, EMBED_MODEL, PASSAGE_PARAMETERS, passageText } from "../src/lib/embedding";
 
 const INDEX_NAME = "snacks-hybrid";
-const EMBED_MODEL = "llama-text-embed-v2";
-// llama-text-embed-v2's native output width; must match the schema below.
-const EMBED_DIMENSION = 1024;
-// The model's documented max_batch_size per /embed call.
-const EMBED_BATCH_SIZE = 96;
 const CLOUD = "aws";
 const REGION = "us-east-1";
 const SOURCE_FILE = "snacks.jsonl";
@@ -88,12 +84,10 @@ async function main() {
   const prepared: Record<string, unknown>[] = [];
   for (let i = 0; i < entries.length; i += EMBED_BATCH_SIZE) {
     const batch = entries.slice(i, i + EMBED_BATCH_SIZE);
-    // Embedded as "name. text" so one vector carries both signals — the same
-    // pairing the BM25 side searches across two fields.
     const { data } = await pc.inference.embed({
       model: EMBED_MODEL,
-      inputs: batch.map((e) => `${e.name}. ${e.text}`),
-      parameters: { inputType: "passage", truncate: "END" },
+      inputs: batch.map(passageText),
+      parameters: PASSAGE_PARAMETERS,
     });
     batch.forEach((entry, j) => {
       const values = (data[j] as { values?: number[] } | undefined)?.values;

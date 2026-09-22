@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSnacksToAddToIndex, getSnacksToRemoveFromIndex, markIndexed } from "@/db/queries";
-import { deleteFromIndex, upsertToIndex } from "@/lib/snacksPinecone";
+import { deleteFromIndex, embedSnackDocuments, upsertToIndex } from "@/lib/snacksPinecone";
 
 export const runtime = "nodejs";
 
@@ -22,14 +22,7 @@ export async function POST() {
 
     if (toAdd.length > 0) {
       await upsertToIndex(
-        toAdd.map((s) => ({
-          _id: s.id,
-          name: s.name,
-          text: s.text,
-          category: s.category,
-          embedding: s.embedding,
-          in_stock: true,
-        })),
+        await embedSnackDocuments(toAdd.map((s) => ({ _id: s.id, name: s.name, text: s.text, category: s.category }))),
       );
       await markIndexed(
         toAdd.map((s) => s.id),
